@@ -71,3 +71,32 @@ CREATE TABLE proyecto_editor (
 -- INSERT INTO usuarios (nombre, email, password) VALUES ('Admin', 'admin@metafora.com', '123');
 
 
+-- ============================================
+-- MÓDULO: EDITOR DE MANUSCRITOS CON VERSIONES
+-- Ejecutar en pgAdmin sobre la base de datos postgres
+-- ============================================
+
+-- Tabla principal del contenido del manuscrito
+CREATE TABLE IF NOT EXISTS manuscrito_contenido (
+  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  proyecto_id BIGINT NOT NULL REFERENCES proyectos(id) ON DELETE CASCADE,
+  contenido TEXT DEFAULT '',
+  version_actual INTEGER DEFAULT 1,
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Tabla de control de versiones
+CREATE TABLE IF NOT EXISTS manuscrito_versiones (
+  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  proyecto_id BIGINT NOT NULL REFERENCES proyectos(id) ON DELETE CASCADE,
+  numero_version INTEGER NOT NULL,
+  contenido TEXT NOT NULL,
+  descripcion VARCHAR(255) DEFAULT 'Versión guardada',
+  autor VARCHAR(150) DEFAULT 'Editor',
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Índices
+CREATE INDEX IF NOT EXISTS idx_contenido_proyecto ON manuscrito_contenido(proyecto_id);
+CREATE INDEX IF NOT EXISTS idx_versiones_proyecto ON manuscrito_versiones(proyecto_id);
+CREATE INDEX IF NOT EXISTS idx_versiones_numero ON manuscrito_versiones(proyecto_id, numero_version);
