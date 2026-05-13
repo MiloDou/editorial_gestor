@@ -379,7 +379,15 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'Server is running' });
 });
 
-app.listen(3000, () => {
+const server = app.listen(3000, () => {
   console.log('✅ Servidor corriendo en http://localhost:3000');
   console.log('📡 Escuchando peticiones...');
+});
+
+server.on('error', (err) => {
+  console.error('Error en servidor:', err);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Error no capturado:', err);
 });

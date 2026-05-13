@@ -1,11 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, List, PieChart, Settings, Plus, Check, Circle, BarChart2, FileText } from 'lucide-react';
+import { Calendar, List, PieChart, Settings, Plus, Check, Circle, BarChart2 } from 'lucide-react';
 import logoEditorial from './assets/logo_editorial.jpg';
 import fondoLogin from './assets/imagen_login2.jpeg';
 import { fetchData, postData as post_datos, updateData as actualizar_informacion, deleteData, API_ENDPOINTS } from './api/client.js';
-import { jsPDF } from 'jspdf';
-import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx';
-import { saveAs } from 'file-saver';
 
 export default function App() {
   // ==========================================
@@ -44,16 +41,6 @@ export default function App() {
   const [isCustomTaskModalOpen, setIsCustomTaskModalOpen] = useState(false);
   const [customTaskName, setCustomTaskName] = useState('');
 
-  const [editorManuscritoId, setEditorManuscritoId] = useState(null);
-  const [editorContenido, setEditorContenido] = useState('');
-  const [editorVersiones, setEditorVersiones] = useState([]);
-  const [editorGuardando, setEditorGuardando] = useState(false);
-  const [editorUltimoGuardado, setEditorUltimoGuardado] = useState(null);
-  const [editorMostrarVersiones, setEditorMostrarVersiones] = useState(false);
-  const [editorDescripcionVersion, setEditorDescripcionVersion] = useState('');
-  const [editorModalVersion, setEditorModalVersion] = useState(false);
-  const [editorVersionPreview, setEditorVersionPreview] = useState(null);
-  const autoSaveRef = React.useRef(null);
   // ==========================================
   // 2. EFECTOS Y FUNCIONES LÓGICAS
   // ==========================================
@@ -201,171 +188,6 @@ export default function App() {
     setCustomTaskName('');
   };
 
-  const abrirEditor = async (manuscritoId) => {
-  setEditorManuscritoId(manuscritoId);
-  setCurrentView('editor');
-  try {
-    const res = await fetch(`http://localhost:3000/api/editor/${manuscritoId}`);
-    const data = await res.json();
-    setEditorContenido(data.contenido || '');
-    const resV = await fetch(`http://localhost:3000/api/editor/${manuscritoId}/versiones`);
-    const versiones = await resV.json();
-    setEditorVersiones(versiones);
-  } catch (err) {
-    console.error('Error abriendo editor:', err);
-  }
-};
-
-const autoGuardarEditor = async (contenido, proyectoId) => {
-  try {
-    await fetch(`http://localhost:3000/api/editor/${proyectoId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contenido })
-    });
-    setEditorUltimoGuardado(new Date());
-  } catch (err) {
-    console.error('Error auto-guardando:', err);
-  }
-};
-
-const handleEditorChange = (e) => {
-  const nuevoContenido = e.target.value;
-  setEditorContenido(nuevoContenido);
-  if (autoSaveRef.current) clearTimeout(autoSaveRef.current);
-  setEditorGuardando(true);
-  autoSaveRef.current = setTimeout(async () => {
-    await autoGuardarEditor(nuevoContenido, editorManuscritoId);
-    setEditorGuardando(false);
-  }, 2000);
-};
-
-const guardarVersion = async () => {
-  if (!editorDescripcionVersion.trim()) return;
-  try {
-    const res = await fetch(`http://localhost:3000/api/editor/${editorManuscritoId}/versiones`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contenido: editorContenido,
-        descripcion: editorDescripcionVersion,
-        autor: 'Editor'
-      })
-    });
-    const nuevaVersion = await res.json();
-    setEditorVersiones([nuevaVersion, ...editorVersiones]);
-    setEditorModalVersion(false);
-    setEditorDescripcionVersion('');
-    alert('✅ Versión guardada correctamente');
-  } catch (err) {
-    alert('Error al guardar la versión');
-  }
-};
-
-const restaurarVersion = async (version) => {
-  if (!window.confirm(`¿Restaurar la versión ${version.numero_version}: "${version.descripcion}"?`)) return;
-  try {
-    setEditorContenido(version.contenido);
-    setEditorVersionPreview(null);
-    setEditorGuardando(true);
-    await fetch(`http://localhost:3000/api/editor/${editorManuscritoId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contenido: version.contenido })
-    });
-    setEditorUltimoGuardado(new Date());
-    setEditorGuardando(false);
-  } catch (err) {
-    console.error('Error restaurando versión:', err);
-    setEditorGuardando(false);
-  }
-};
-
-const eliminarVersion = async (versionId) => {
-  if (!window.confirm('¿Eliminar esta versión permanentemente?')) return;
-  try {
-    await fetch(`http://localhost:3000/api/editor/${editorManuscritoId}/versiones/${versionId}`, { method: 'DELETE' });
-    setEditorVersiones(editorVersiones.filter(v => v.id !== versionId));
-  } catch (err) {
-    alert('Error al eliminar versión');
-  }
-};
-
-const contarPalabras = (texto) => {
-  if (!texto || !texto.trim()) return 0;
-  return texto.trim().split(/\s+/).length;
-};
-  const descargarPDF = (version) => {
-  const doc = new jsPDF();
-  const manuscrito = manuscritos.find(m => m.id === editorManuscritoId);
-  const titulo = manuscrito?.name || 'Manuscrito';
-  const contenido = version ? version.contenido : editorContenido;
-  const nombreVersion = version ? `v${version.numero_version} - ${version.descripcion}` : 'Versión actual';
-
-  // Título
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.text(titulo, 20, 20);
-
-  // Versión
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  doc.setTextColor(140, 122, 107);
-  doc.text(nombreVersion, 20, 30);
-  doc.text(`Descargado: ${new Date().toLocaleDateString('es-GT')}`, 20, 36);
-
-  // Línea separadora
-  doc.setDrawColor(200, 190, 180);
-  doc.line(20, 40, 190, 40);
-
-  // Contenido
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(12);
-  doc.setTextColor(0, 0, 0);
-  const lineas = doc.splitTextToSize(contenido || '(Sin contenido)', 170);
-  doc.text(lineas, 20, 50);
-
-  doc.save(`${titulo}_${nombreVersion}.pdf`);
-};
-
-const descargarDOCX = async (version) => {
-  const manuscrito = manuscritos.find(m => m.id === editorManuscritoId);
-  const titulo = manuscrito?.name || 'Manuscrito';
-  const contenido = version ? version.contenido : editorContenido;
-  const nombreVersion = version ? `v${version.numero_version} - ${version.descripcion}` : 'Versión actual';
-
-  const parrafos = (contenido || '(Sin contenido)').split('\n').map(linea =>
-    new Paragraph({
-      children: [new TextRun({ text: linea, size: 24, font: 'Calibri' })],
-      spacing: { after: 200 }
-    })
-  );
-
-  const doc = new Document({
-    sections: [{
-      children: [
-        new Paragraph({
-          text: titulo,
-          heading: HeadingLevel.HEADING_1,
-          spacing: { after: 200 }
-        }),
-        new Paragraph({
-          children: [new TextRun({ text: nombreVersion, size: 20, color: '8c7a6b', italics: true })],
-          spacing: { after: 100 }
-        }),
-        new Paragraph({
-          children: [new TextRun({ text: `Descargado: ${new Date().toLocaleDateString('es-GT')}`, size: 18, color: '999999' })],
-          spacing: { after: 400 }
-        }),
-        ...parrafos
-      ]
-    }]
-  });
-
-  const blob = await Packer.toBlob(doc);
-  saveAs(blob, `${titulo}_${nombreVersion}.docx`);
-};
-
   // Guardar Manuscritos y Tareas en DB
   const crear_nuevo_manuscrito = async () => {
     if (!newManuscritoForm.nombre.trim() || !newManuscritoForm.cliente_id) {
@@ -473,12 +295,6 @@ const descargarDOCX = async (version) => {
                 </div>
               ))}
             </div>
-            <button 
-              onClick={() => abrirEditor(manu.id)} 
-              className="mt-4 text-sm text-[#8c7a6b] hover:text-[#4a3f35] border border-dashed border-[#d4cdbf] w-full py-3 rounded-lg flex items-center justify-center gap-2 transition-colors"
-            >
-              <FileText className="w-4 h-4" /> Abrir editor de texto
-            </button>
             <button onClick={() => setTaskModalManuscritoId(manu.id)} className="mt-6 text-sm text-[#8c7a6b] hover:text-[#4a3f35] border border-dashed border-[#d4cdbf] w-full py-3 rounded-lg flex items-center justify-center gap-2 transition-colors">
               <Plus className="w-4 h-4" /> Agregar tarea
             </button>
@@ -599,152 +415,6 @@ const descargarDOCX = async (version) => {
     );
   };
 
-
-  const renderEditor = () => {
-  const manuscrito = manuscritos.find(m => m.id === editorManuscritoId);
-  const palabras = contarPalabras(editorContenido || '');
-  const caracteres = (editorContenido || '').length;
-
-  return (
-    <div className="flex gap-6 h-full" style={{ minHeight: 'calc(100vh - 200px)' }}>
-      <div className="flex-1 flex flex-col">
-        <div className="bg-white rounded-xl border border-[#e8e4d9] p-4 mb-4 flex items-center justify-between shadow-sm">
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-[#8c7a6b]">
-              {editorGuardando ? (
-                <span className="text-amber-500">● Guardando...</span>
-              ) : editorUltimoGuardado ? (
-                <span className="text-green-600">✓ Guardado {editorUltimoGuardado.toLocaleTimeString()}</span>
-              ) : (
-                <span className="text-[#8c7a6b]">Sin cambios</span>
-              )}
-            </span>
-            <span className="text-xs text-[#b0a090] border-l border-[#e8e4d9] pl-4">
-              {palabras} palabras · {caracteres} caracteres
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setEditorMostrarVersiones(!editorMostrarVersiones)}
-              className={`px-4 py-2 rounded-lg text-sm border transition-colors flex items-center gap-2 ${editorMostrarVersiones ? 'bg-[#4a3f35] text-white border-[#4a3f35]' : 'border-[#d4cdbf] text-[#8c7a6b] hover:bg-[#f4f1ea]'}`}
-            >
-              📋 Versiones ({editorVersiones.length})
-            </button>
-            
-            <button
-              onClick={() => descargarPDF(null)}
-              className="px-4 py-2 rounded-lg text-sm border border-[#d4cdbf] text-[#8c7a6b] hover:bg-[#f4f1ea] transition-colors"
-            >
-              📄 PDF
-            </button>
-
-            <button
-              onClick={() => descargarDOCX(null)}
-              className="px-4 py-2 rounded-lg text-sm border border-[#d4cdbf] text-[#8c7a6b] hover:bg-[#f4f1ea] transition-colors"
-            >
-              📝 DOCX
-            </button>
-            <button
-              onClick={() => setEditorModalVersion(true)}
-              className="px-4 py-2 rounded-lg text-sm bg-[#8c7a6b] text-white hover:bg-[#7a6a5d] transition-colors flex items-center gap-2"
-            >
-              💾 Guardar versión
-            </button>
-          </div>
-        </div>
-
-        <div className="flex-1 bg-white rounded-xl border border-[#e8e4d9] shadow-sm overflow-hidden flex flex-col">
-          <div className="px-6 py-4 border-b border-[#f0ede6] bg-[#faf9f6]">
-            <h3 className="font-serif text-[#4a3f35] text-lg">{manuscrito?.name || 'Manuscrito'}</h3>
-            <p className="text-xs text-[#8c7a6b] mt-0.5">Editor de texto — los cambios se guardan automáticamente</p>
-          </div>
-          <textarea
-            value={editorContenido}
-            onChange={handleEditorChange}
-            placeholder="Comienza a escribir tu manuscrito aquí..."
-            className="flex-1 w-full p-8 text-[#4a3f35] leading-relaxed resize-none focus:outline-none font-serif text-base"
-            style={{ minHeight: '500px', fontFamily: 'Georgia, serif', lineHeight: '1.8' }}
-          />
-        </div>
-      </div>
-
-      {editorMostrarVersiones && (
-        <div className="w-72 flex-shrink-0">
-          <div className="bg-white rounded-xl border border-[#e8e4d9] shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-[#f0ede6] bg-[#faf9f6]">
-              <h4 className="font-serif text-[#4a3f35]">Historial de versiones</h4>
-              <p className="text-xs text-[#8c7a6b] mt-0.5">{editorVersiones.length} versiones guardadas</p>
-            </div>
-            <div className="overflow-y-auto" style={{ maxHeight: '600px' }}>
-              {editorVersiones.length === 0 ? (
-                <div className="p-6 text-center text-sm text-[#8c7a6b]">
-                  <p>Aún no hay versiones.</p>
-                  <p className="mt-1 text-xs">Usa "Guardar versión" para crear un punto de restauración.</p>
-                </div>
-              ) : (
-                editorVersiones.map(version => (
-                  <div key={version.id} className={`p-4 border-b border-[#f0ede6] hover:bg-[#faf9f6] transition-colors ${editorVersionPreview?.id === version.id ? 'bg-[#f4f1ea]' : ''}`}>
-                    <div className="flex items-start justify-between mb-1">
-                      <span className="text-xs font-bold text-[#8c7a6b] bg-[#f0ede6] px-2 py-0.5 rounded-full">v{version.numero_version}</span>
-                      <span className="text-xs text-[#b0a090]">{new Date(version.created_at).toLocaleDateString('es-GT', { day: '2-digit', month: 'short' })}</span>
-                    </div>
-                    <p className="text-sm text-[#4a3f35] font-medium mt-2">{version.descripcion}</p>
-                    <p className="text-xs text-[#8c7a6b] mt-1">{version.autor}</p>
-                    <div className="flex gap-2 mt-3">
-                      <button onClick={() => setEditorVersionPreview(editorVersionPreview?.id === version.id ? null : version)} className="flex-1 text-xs py-1.5 rounded-lg border border-[#d4cdbf] text-[#8c7a6b] hover:bg-[#f4f1ea] transition-colors">
-                        {editorVersionPreview?.id === version.id ? 'Cerrar' : 'Ver'}
-                      </button>
-
-                      <button onClick={() => descargarPDF(version)} className="text-xs py-1.5 px-2 rounded-lg text-[#8c7a6b] border border-[#d4cdbf] hover:bg-[#f4f1ea] transition-colors">PDF</button>
-                      <button onClick={() => descargarDOCX(version)} className="text-xs py-1.5 px-2 rounded-lg text-[#8c7a6b] border border-[#d4cdbf] hover:bg-[#f4f1ea] transition-colors">DOCX</button>
-                      <button onClick={() => restaurarVersion(version)} className="flex-1 text-xs py-1.5 rounded-lg bg-[#4a3f35] text-white hover:bg-black transition-colors">Restaurar</button>
-                      <button onClick={() => eliminarVersion(version.id)} className="text-xs py-1.5 px-2 rounded-lg text-red-400 hover:bg-red-50 transition-colors">✕</button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {editorVersionPreview && (
-            <div className="mt-4 bg-white rounded-xl border border-[#e8e4d9] shadow-sm overflow-hidden">
-              <div className="px-5 py-3 border-b border-[#f0ede6] bg-amber-50 flex items-center justify-between">
-                <span className="text-xs font-medium text-amber-700">Previsualización v{editorVersionPreview.numero_version}</span>
-                <button onClick={() => setEditorVersionPreview(null)} className="text-amber-400 text-xs hover:text-amber-600">✕</button>
-              </div>
-              <div className="p-4 max-h-48 overflow-y-auto">
-                <p className="text-xs text-[#4a3f35] leading-relaxed font-serif whitespace-pre-wrap">{editorVersionPreview.contenido || '(Sin contenido)'}</p>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {editorModalVersion && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl border border-[#e8e4d9]">
-            <h3 className="text-xl font-serif text-[#4a3f35] mb-4">Guardar versión</h3>
-            <p className="text-sm text-[#8c7a6b] mb-4">Agrega una descripción para identificar esta versión.</p>
-            <input
-              type="text"
-              value={editorDescripcionVersion}
-              onChange={(e) => setEditorDescripcionVersion(e.target.value)}
-              className="w-full bg-[#f4f1ea] border border-[#d4cdbf] rounded-lg px-4 py-3 text-[#4a3f35] focus:outline-none focus:ring-2 focus:ring-[#8c7a6b]/50"
-              placeholder="Ej: Primera revisión completa..."
-              onKeyDown={(e) => e.key === 'Enter' && guardarVersion()}
-              autoFocus
-            />
-            <div className="flex justify-end gap-3 mt-6">
-              <button onClick={() => { setEditorModalVersion(false); setEditorDescripcionVersion(''); }} className="px-4 py-2 rounded-lg text-sm border border-[#d4cdbf] text-[#8c7a6b]">Cancelar</button>
-              <button onClick={guardarVersion} className="px-4 py-2 rounded-lg text-sm bg-[#8c7a6b] text-white hover:bg-[#7a6a5d]">Guardar</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
   // ==========================================
   // 4. BARRERA DE LOGIN
   // ==========================================
@@ -789,9 +459,6 @@ const descargarDOCX = async (version) => {
           <button onClick={() => setCurrentView('resumen')} className={`w-full flex items-center gap-4 px-4 py-3 rounded-xl transition-all ${currentView === 'resumen' ? 'bg-black/10 border-2 border-black/10' : 'hover:bg-white/5 border-2 border-transparent'}`}>
             <PieChart className="w-5 h-5" /> Resumen
           </button>
-          <button onClick={() => setCurrentView('editor')} className={`w-full flex items-center gap-4 px-4 py-3 rounded-xl transition-all ${currentView === 'editor' ? 'bg-black/10 border-2 border-black/10' : 'hover:bg-white/5 border-2 border-transparent'}`}>
-            <FileText className="w-5 h-5" /> Editor
-          </button>
         </nav>
 
         <div className="p-6 border-t border-white/10 flex items-center justify-between">
@@ -804,11 +471,10 @@ const descargarDOCX = async (version) => {
       <div className="flex-1 flex flex-col overflow-y-auto">
         <header className="px-12 py-10 flex justify-between items-end">
           <div>
-           <h2 className="text-3xl font-serif text-[#4a3f35]">{currentView === 'cronogramas' ? 'Cronogramas' : currentView === 'gantt' ? 'Vista Gantt' : currentView === 'editor' ? 'Editor de Manuscrito' : 'Resumen'}</h2>
+            <h2 className="text-3xl font-serif text-[#4a3f35]">{currentView === 'cronogramas' ? 'Cronogramas' : currentView === 'gantt' ? 'Vista Gantt' : 'Resumen'}</h2>
             <p className="text-[#8c7a6b] mt-1">
               {currentView === 'cronogramas' ? 'Gestiona tus manuscritos y tareas' : 
-                currentView === 'gantt' ? 'Visualiza el tiempo de cada tarea' :
-                currentView === 'editor' ? 'Edita el contenido con control de versiones' : 'Estado general de todos los manuscritos'}
+               currentView === 'gantt' ? 'Visualiza el tiempo de cada tarea' : 'Estado general de todos los manuscritos'}
             </p>
           </div>
           <button onClick={() => setIsModalOpen(true)} className="bg-[#8c7a6b] hover:bg-[#7a6a5d] text-white px-6 py-3 rounded-xl shadow-md transition-colors flex items-center gap-2 font-medium">
@@ -819,7 +485,6 @@ const descargarDOCX = async (version) => {
           {currentView === 'cronogramas' && renderCronogramas()}
           {currentView === 'gantt' && renderGantt()}
           {currentView === 'resumen' && renderResumen()}
-          {currentView === 'editor' && renderEditor()}
         </main>
       </div>
 

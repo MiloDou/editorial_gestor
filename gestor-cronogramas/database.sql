@@ -69,3 +69,5 @@ CREATE TABLE proyecto_editor (
 -- DATOS DE PRUEBA (Opcional, para que tu equipo pueda entrar de una vez)
 -- ==========================================
 -- INSERT INTO usuarios (nombre, email, password) VALUES ('Admin', 'admin@metafora.com', '123');
+
+
