@@ -60,6 +60,19 @@ app.post('/api/clientes', async (req, res) => {
   }
 });
 
+// DELETE - Eliminar cliente
+app.delete('/api/clientes/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query('DELETE FROM clientes WHERE id = $1 RETURNING *', [id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Cliente no encontrado' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error DELETE clientes:', err.message);
+    res.status(500).json({ error: 'Error al eliminar cliente' });
+  }
+});
+
 // ============== EDITORES ==============
 // GET - Obtener todos los editores
 app.get('/api/editores', async (req, res) => {
@@ -87,6 +100,19 @@ app.post('/api/editores', async (req, res) => {
   } catch (err) {
     console.error('Error POST editores:', err.message);
     res.status(500).json({ error: 'Error al crear editor' });
+  }
+});
+
+// DELETE - Eliminar editor
+app.delete('/api/editores/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query('DELETE FROM editores WHERE id = $1 RETURNING *', [id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Editor no encontrado' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error DELETE editores:', err.message);
+    res.status(500).json({ error: 'Error al eliminar editor' });
   }
 });
 
@@ -377,6 +403,142 @@ app.post('/api/login', async (req, res) => {
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'Server is running' });
+});
+
+
+// ============================================
+// RUTAS PARA EDITOR DE MANUSCRITOS
+// Pegar este código en server.js antes de la línea:
+// const server = app.listen(3000, ...
+// ============================================
+
+// ============== EDITOR DE MANUSCRITOS ==============
+
+// GET - Obtener contenido actual del manuscrito
+app.get('/api/editor/:proyecto_id', async (req, res) => {
+  const { proyecto_id } = req.params;
+  try {
+    const result = await pool.query(
+      'SELECT * FROM manuscrito_contenido WHERE proyecto_id = $1',
+      [proyecto_id]
+    );
+    if (result.rows.length === 0) {
+      // Si no existe contenido, crear uno vacío
+      const nuevo = await pool.query(
+        'INSERT INTO manuscrito_contenido (proyecto_id, contenido, version_actual) VALUES ($1, $2, $3) RETURNING *',
+        [proyecto_id, '', 1]
+      );
+      return res.json(nuevo.rows[0]);
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error GET editor:', err.message);
+    res.status(500).json({ error: 'Error al obtener contenido' });
+  }
+});
+
+// PUT - Guardar contenido (auto-guardado)
+app.put('/api/editor/:proyecto_id', async (req, res) => {
+  const { proyecto_id } = req.params;
+  const { contenido } = req.body;
+  try {
+    const result = await pool.query(
+      `INSERT INTO manuscrito_contenido (proyecto_id, contenido, version_actual, updated_at)
+       VALUES ($1, $2, 1, NOW())
+       ON CONFLICT (proyecto_id) DO UPDATE 
+       SET contenido = $2, updated_at = NOW()
+       RETURNING *`,
+      [proyecto_id, contenido]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error PUT editor:', err.message);
+    res.status(500).json({ error: 'Error al guardar contenido' });
+  }
+});
+
+// POST - Guardar nueva versión
+app.post('/api/editor/:proyecto_id/versiones', async (req, res) => {
+  const { proyecto_id } = req.params;
+  const { contenido, descripcion, autor } = req.body;
+  try {
+    // Obtener el número de versión siguiente
+    const countResult = await pool.query(
+      'SELECT COUNT(*) FROM manuscrito_versiones WHERE proyecto_id = $1',
+      [proyecto_id]
+    );
+    const numero_version = parseInt(countResult.rows[0].count) + 1;
+
+    const result = await pool.query(
+      'INSERT INTO manuscrito_versiones (proyecto_id, numero_version, contenido, descripcion, autor) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [proyecto_id, numero_version, contenido, descripcion || `Versión ${numero_version}`, autor || 'Editor']
+    );
+
+    // Actualizar versión actual en manuscrito_contenido
+    await pool.query(
+      `INSERT INTO manuscrito_contenido (proyecto_id, contenido, version_actual, updated_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (proyecto_id) DO UPDATE 
+       SET contenido = $2, version_actual = $3, updated_at = NOW()`,
+      [proyecto_id, contenido, numero_version]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('Error POST versiones:', err.message);
+    res.status(500).json({ error: 'Error al guardar versión' });
+  }
+});
+
+// GET - Obtener todas las versiones de un manuscrito
+app.get('/api/editor/:proyecto_id/versiones', async (req, res) => {
+  const { proyecto_id } = req.params;
+  try {
+    const result = await pool.query(
+      'SELECT id, numero_version, descripcion, autor, created_at, LEFT(contenido, 100) as preview FROM manuscrito_versiones WHERE proyecto_id = $1 ORDER BY numero_version DESC',
+      [proyecto_id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error GET versiones:', err.message);
+    res.status(500).json({ error: 'Error al obtener versiones' });
+  }
+});
+
+// GET - Obtener una versión específica
+app.get('/api/editor/:proyecto_id/versiones/:version_id', async (req, res) => {
+  const { proyecto_id, version_id } = req.params;
+  try {
+    const result = await pool.query(
+      'SELECT * FROM manuscrito_versiones WHERE id = $1 AND proyecto_id = $2',
+      [version_id, proyecto_id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Versión no encontrada' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error GET version especifica:', err.message);
+    res.status(500).json({ error: 'Error al obtener versión' });
+  }
+});
+
+// DELETE - Eliminar una versión
+app.delete('/api/editor/:proyecto_id/versiones/:version_id', async (req, res) => {
+  const { proyecto_id, version_id } = req.params;
+  try {
+    const result = await pool.query(
+      'DELETE FROM manuscrito_versiones WHERE id = $1 AND proyecto_id = $2 RETURNING *',
+      [version_id, proyecto_id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Versión no encontrada' });
+    }
+    res.json({ message: 'Versión eliminada' });
+  } catch (err) {
+    console.error('Error DELETE version:', err.message);
+    res.status(500).json({ error: 'Error al eliminar versión' });
+  }
 });
 
 const server = app.listen(3000, () => {
